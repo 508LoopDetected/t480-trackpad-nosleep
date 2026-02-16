@@ -1,0 +1,14 @@
+[Trigger]
+Operation = Install
+Operation = Upgrade
+Type = Package
+Target = linux
+Target = linux-headers
+
+[Action]
+Description = Rebuilding rmi4 module with nosleep patch...
+When = PostTransaction
+Exec = /usr/local/bin/rmi4-nosleep-hook
+Depends = git
+Depends = make
+Depends = gcc

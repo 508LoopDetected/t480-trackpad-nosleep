@@ -1,0 +1,67 @@
+#!/bin/bash
+#
+# Rebuilds the rmi4 kernel module with the nosleep patch applied.
+# Called automatically by pacman after linux/linux-headers upgrades.
+#
+
+set -euo pipefail
+
+PATCH_FILE="/usr/local/share/rmi4-nosleep/rmi4-nosleep.patch"
+
+log()  { printf '  -> %s\n' "$*"; }
+warn() { printf '  -> WARNING: %s\n' "$*"; }
+
+[[ -f "$PATCH_FILE" ]] || { warn "Patch file missing: $PATCH_FILE"; exit 0; }
+
+# Rebuild for each installed kernel that has headers available
+rebuilt=0
+for builddir in /usr/lib/modules/*/build; do
+    [[ -d "$builddir" ]] || continue
+    kver="$(basename "$(dirname "$builddir")")"
+    moddir="/usr/lib/modules/$kver/kernel/drivers/input/rmi4"
+
+    [[ -d "$moddir" ]] || continue
+
+    log "Building patched rmi4 module for $kver..."
+
+    # Work in a temp directory
+    tmpdir="$(mktemp -d)"
+    trap "rm -rf '$tmpdir'" EXIT
+
+    # Extract major version (e.g., 6.18.9-arch1-2 -> v6.18)
+    major_ver="v$(echo "$kver" | grep -oP '^\d+\.\d+')"
+
+    # Fetch only the rmi4 source
+    cd "$tmpdir"
+    git init -q
+    git remote add origin https://github.com/torvalds/linux.git
+    if ! git fetch --depth 1 -q origin "$major_ver" 2>/dev/null; then
+        warn "Could not fetch kernel source for $major_ver, skipping"
+        rm -rf "$tmpdir"
+        trap - EXIT
+        continue
+    fi
+    git checkout -q FETCH_HEAD -- drivers/input/rmi4/
+
+    # Apply patch
+    patch -p1 -s < "$PATCH_FILE"
+
+    # Build
+    make -C "$builddir" M="$tmpdir/drivers/input/rmi4" modules -j"$(nproc)" > /dev/null 2>&1
+
+    # Compress and install
+    zstd -q --rm -f "$tmpdir/drivers/input/rmi4/rmi_core.ko" -o "$moddir/rmi_core.ko.zst"
+
+    # Update module dependencies
+    depmod "$kver"
+
+    log "Patched rmi4 module installed for $kver"
+    rebuilt=$((rebuilt + 1))
+
+    rm -rf "$tmpdir"
+    trap - EXIT
+done
+
+if [[ $rebuilt -eq 0 ]]; then
+    warn "No kernels with headers found. Install linux-headers."
+fi

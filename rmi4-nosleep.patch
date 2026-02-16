@@ -1,0 +1,10 @@
+--- a/drivers/input/rmi4/rmi_f01.c
++++ b/drivers/input/rmi4/rmi_f01.c
+@@ -438,6 +438,7 @@
+ 	}
+
+ 	f01->device_control.ctrl0 |= RMI_F01_CTRL0_CONFIGURED_BIT;
++	f01->device_control.ctrl0 |= RMI_F01_CTRL0_NOSLEEP_BIT;
+
+ 	error = rmi_write(rmi_dev, fn->fd.control_base_addr,
+ 			  f01->device_control.ctrl0);
